@@ -9,13 +9,41 @@
 #include <chrono>
 #include <sstream>
 
+
+// Tile related
+const int TILE_SIZE = 32;
+const int TILETYPE_startIndex = 0;
+const int TILETYPE_endIndex = 6;
+enum class TILETYPE { BLANK = 0, WALL = 1, PLAYERSPAWN = 2, RED = 3, BLU = 4, ORANGE = 5, PINK = 6 };
+std::array<std::string, 7> tileTypeString = { "Empty", "Wall", "PlayerSpawn", "RedSpawn", "BlueSpawn", "OrangeSpawn", "PinkSpawn" };
+const int TILETYPE_LEN = 6;
+
+// Debug/play toggle
+enum class MODE {DEBUG, PLAY};
+MODE game_MODE = MODE::DEBUG;
+
+struct InputHandling {
+public:
+    // Input events/ input related
+    // True if mouse left click event this frame
+    bool leftClickJustPressed = false;
+    // If the left click is pressesd/held
+    bool leftClickPressed = false;
+    bool rightClickPressed = false;
+    // True if mouse right click event this frame
+    bool rightClickJustPressed = false;
+    // The tile id that was input via keyboard by typing (0, 1, 2, etc)
+    bool controlIsHeld = false;
+    TILETYPE tileType;
+};
+
+InputHandling GLOBAL_input;
+
+
 bool fileExists(const std::string& filename) {
     std::ifstream file(filename);
     return file.is_open();
 }
-
-const int TILE_SIZE = 64;
-
 
 bool parseNumber(std::string s, int& mod)
 {
@@ -29,9 +57,6 @@ bool parseNumber(std::string s, int& mod)
         return false;
     }
 }
-enum class TILEID { BLANK = 0, WALL = 1, PLAYERSPAWN = 2, RED = 3, BLU = 4, ORANGE = 5, PINK = 6 };
-const int TILEID_MAX = 6;
-
 //Forward declaration
 class Tile;
 // Just exposes needed for tile
@@ -46,14 +71,14 @@ class MapSuper
 class Tile
 {
     public:
-        TILEID tileId;
+        TILETYPE tile_ID;
         int row, col;
         MapSuper* map;
 
-        Tile(MapSuper* _map, int _r, int _c, TILEID _t = TILEID::BLANK)
+        Tile(MapSuper* _map, int _r, int _c, TILETYPE _t = TILETYPE::BLANK)
         {
             this->map = _map;
-            this->tileId = _t;
+            this->tile_ID = _t;
             this->row = _r;
             this->col = _c;
             // Handle special tile id (update the pointers of the grid)
@@ -63,6 +88,18 @@ class Tile
                 // Set the loc var
                 map->setSpecialLocVars((int)_t, sf::Vector2f(_c, _r));
             }
+        }
+        
+        static sf::Color tileType2DebugColor(TILETYPE type)
+        {
+            std::cout << "tiletype is " << (int)type << "\n";
+            if (type == TILETYPE::WALL) return sf::Color::White;
+            else if (type == TILETYPE::PLAYERSPAWN) return sf::Color::Green;
+            else if (type == TILETYPE::RED) return sf::Color::Red;
+            else if (type == TILETYPE::PINK) return sf::Color::Magenta;
+            else if (type == TILETYPE::ORANGE) return sf::Color::Yellow;
+            else if (type == TILETYPE::BLU) return sf::Color::Blue;
+            else return sf::Color::Black;
         }
 
         // Returns all the adjacent tiles (up,down,left right) to this tile
@@ -134,7 +171,9 @@ public:
         *specialVars[index] = value;
     }
 
+    // Gets number of cols
     int getWidth() { return mapWidth; }
+    // Gets number of rows
     int getHeight() { return mapHeight; }
 
     // Creates grid full of null ptrs.
@@ -200,11 +239,11 @@ public:
                 if (_row != -1)
                 {
 
-                    if (asInt < 0 || asInt > TILEID_MAX) throw std::runtime_error("File error: csv field is not valid tileID");
+                    if (asInt < 0 || asInt > TILETYPE_LEN) throw std::runtime_error("File error: csv field is not valid tileID");
                     // otherwise ok
 
                     // Create tile
-                    Tile* newTile = new Tile(this, _row, _col, static_cast<TILEID>(asInt));
+                    Tile* newTile = new Tile(this, _row, _col, static_cast<TILETYPE>(asInt));
                     set(_row, _col, newTile);
                 }
                 else // For first row, cols are [mapHeight, mapWidth] /!IMPORTANT
@@ -241,7 +280,7 @@ public:
             {
                 Tile* _tile = this->get(i, j);
                 sf::RectangleShape r = sf::RectangleShape(sf::Vector2f{ (float) TILE_SIZE, (float)TILE_SIZE });
-                if (_tile->tileId == TILEID::WALL) r.setFillColor(sf::Color::White);
+                if (_tile->tile_ID == TILETYPE::WALL) r.setFillColor(sf::Color::White);
                 else r.setFillColor(sf::Color::Black);
                 r.setPosition(sf::Vector2f(j* TILE_SIZE, i* TILE_SIZE));
                 window.draw(r);
@@ -250,24 +289,177 @@ public:
     }
 
 
+    // Gets {row, col} that is being moused over. returns {-1,-1} if not moused over anything
+    std::array<int, 2> getTileMousedOver(sf::RenderWindow &window)
+    {
+        sf::Vector2i pixelPos = sf::Mouse::getPosition(window);        // window coordinates
+        sf::Vector2f mouseCoords = window.mapPixelToCoords(pixelPos);
+        //sf::Vector2f mouseCoords;
+
+        // Get nearest
+        int colClosest = mouseCoords.x / TILE_SIZE;
+        int rowClosest = mouseCoords.y / TILE_SIZE;
+        if (colClosest >= getWidth()) colClosest = getWidth() - 1;
+        if (rowClosest >= getHeight()) rowClosest = getHeight() - 1;
+
+        return std::array<int, 2>{rowClosest, colClosest};
+    }
+
+    // Returns true if mouse is moused over row, col
+    bool isMouseOver(int row, int col, sf::RenderWindow& window)
+    {
+        std::array<int, 2> mousedOver = getTileMousedOver(window);
+        return mousedOver[0] == row && mousedOver[1] == col;
+    }
+
+    void Update(float dt, sf::RenderWindow& window)
+    {
+        if (game_MODE == MODE::DEBUG)
+        {
+            // Row, col of mouse over
+            std::array<int, 2> mouseOver = getTileMousedOver(window);
+            
+            if (GLOBAL_input.leftClickPressed) {
+                // Left control + click to erase
+                if (GLOBAL_input.controlIsHeld) this->get(mouseOver[0], mouseOver[1])->tile_ID = TILETYPE::BLANK;
+                // Set to the new tile type
+                else this->get(mouseOver[0], mouseOver[1])->tile_ID = GLOBAL_input.tileType;
+            }
+        }
+    }
+
+    void RenderDebug(sf::RenderWindow& window)
+    {
+        bool drawFront = true;
+        sf::RectangleShape specialRender;
+        std::array<int, 2> mouseOver = getTileMousedOver(window);
+        for (int i = 0; i < mapHeight; i++)
+        {
+            for (int j = 0; j < mapWidth; j++)
+            {
+                Tile* _tile = this->get(i, j);
+                sf::RectangleShape r = sf::RectangleShape(sf::Vector2f{ (float)TILE_SIZE, (float)TILE_SIZE });
+                if (_tile->tile_ID == TILETYPE::WALL) r.setFillColor(sf::Color::White);
+                else if (_tile->tile_ID == TILETYPE::PLAYERSPAWN) r.setFillColor(sf::Color::Green);
+                else if (_tile->tile_ID == TILETYPE::RED) r.setFillColor(sf::Color::Red);
+                else if (_tile->tile_ID == TILETYPE::PINK) r.setFillColor(sf::Color::Magenta);
+                else if (_tile->tile_ID == TILETYPE::ORANGE) r.setFillColor(sf::Color::Yellow);
+                else if (_tile->tile_ID == TILETYPE::BLU) r.setFillColor(sf::Color::Blue);
+                else r.setFillColor(sf::Color::Black);
+                r.setPosition(sf::Vector2f(j * TILE_SIZE, i * TILE_SIZE));
+
+                // If mouse over, change outline color
+                /*
+                std::array<int, 2> mouseOver = getTileMousedOver(window);
+                if (mouseOver[0] == i && mouseOver[1] == j) {
+;                   r.setOutlineColor(sf::Color::Red);
+                    r.setOutlineThickness(3);
+                    drawFront = true;
+                    specialRender = sf::RectangleShape(r);
+                }
+                else
+                {
+                    //r.setOutlineColor(r.getFillColor());
+                    //r.setOutlineThickness(3);
+                }
+                */
+                window.draw(r);
+            } // end col loop
+        } // end row loop
+        
+        // Draw the selected one  
+        if (mouseOver[0] >= 0 && mouseOver[0] <= this->mapHeight - 1 && mouseOver[1] >= 0 && mouseOver[1] <= this->mapWidth - 1)
+        {
+            specialRender = sf::RectangleShape(sf::Vector2f{ (float)TILE_SIZE, (float)TILE_SIZE });
+            specialRender.setPosition(sf::Vector2f(mouseOver[1] * TILE_SIZE, mouseOver[0] * TILE_SIZE));
+            sf::Color fill_c = Tile::tileType2DebugColor(GLOBAL_input.tileType);
+            std::cout << "fill color is " << fill_c.r << "," << fill_c.g  << "," << fill_c.b << "\n";
+            specialRender.setFillColor(fill_c);
+            specialRender.setOutlineColor(sf::Color::Red);
+            specialRender.setOutlineThickness(3);
+
+            window.draw(specialRender);
+        }
+
+        
+    }
+
+
 
 };
 
+// Updates event flags in Global_input
+void HandleInput(std::optional<sf::Event>& event)
+{
+    GLOBAL_input.leftClickJustPressed = false;
+    GLOBAL_input.rightClickJustPressed = false;
+    // Handle key press
+    if (event->is < sf::Event::KeyPressed>())
+    {
+        auto keyEvent = event->getIf<sf::Event::KeyPressed>();
+        //if (keyEvent->code == sf::Keyboard::Key::Num0) { GLOBAL_input.tileType = TILETYPE::BLANK; std::cout << "Selected: " << tileTypeString[0] << "\n"; }
+        if (keyEvent->code == sf::Keyboard::Key::Num1) { GLOBAL_input.tileType = TILETYPE::WALL; std::cout << "Selected: " << tileTypeString[1] << "\n";}
+        if (keyEvent->code == sf::Keyboard::Key::P) { GLOBAL_input.tileType = TILETYPE::PLAYERSPAWN; std::cout << "Selected: " << tileTypeString[(int)TILETYPE::PLAYERSPAWN] << "\n"; }
+        
+        if (keyEvent->code == sf::Keyboard::Key::Up) {
+            int target = ((int)GLOBAL_input.tileType) + 1;
+            if (target >= tileTypeString.size()) target = 1; // loop around
+            GLOBAL_input.tileType = static_cast<TILETYPE>(target);
+        }
+        else if (keyEvent->code == sf::Keyboard::Key::Down) {
+            int target = ((int)GLOBAL_input.tileType) - 1;
+            if (target < 0 ) target = TILETYPE_LEN - 1; // loop around
+            GLOBAL_input.tileType = static_cast<TILETYPE>(target);
+        }
+
+        if (keyEvent->code == sf::Keyboard::Key::LControl) GLOBAL_input.controlIsHeld = true;
+
+        //if (keyEvent->code == sf::Keyboard::Key::)
+        //std::cout << "Key code: " << keyEvent->code << "\n";
+    }
+    else if (event->is < sf::Event::KeyReleased>())
+    {
+        auto keyEvent = event->getIf<sf::Event::KeyReleased>();
+        if (keyEvent->code == sf::Keyboard::Key::LControl) GLOBAL_input.controlIsHeld = false;
+    }
+    else if (event->is<sf::Event::MouseButtonPressed>())
+    {
+        auto mouseEvent = event->getIf<sf::Event::MouseButtonPressed>();
+        if (mouseEvent->button == sf::Mouse::Button::Left) {
+            GLOBAL_input.leftClickJustPressed = true;
+            GLOBAL_input.leftClickPressed = true;
+        }
+        if (mouseEvent->button == sf::Mouse::Button::Right) GLOBAL_input.rightClickJustPressed = true;
+    }
+    else if (event->is<sf::Event::MouseButtonReleased>())
+    {
+        auto mouseEvent = event->getIf<sf::Event::MouseButtonReleased>();
+        if (mouseEvent->button == sf::Mouse::Button::Left) GLOBAL_input.leftClickPressed = false;
+        if (mouseEvent->button == sf::Mouse::Button::Right) GLOBAL_input.rightClickPressed = false;
+    }
+    
+    //asfdsf
+}
+
+sf::Clock game_clock;
 int main()
 {
     Map m;
     m.LoadFromFile("example.csv");
-    sf::RenderWindow window(sf::VideoMode({ (unsigned)m.getWidth() * TILE_SIZE, (unsigned)m.getHeight() * TILE_SIZE }), "SFML Test");
+    sf::RenderWindow window(sf::VideoMode({ (unsigned)m.getWidth() * TILE_SIZE, (unsigned)m.getHeight() * TILE_SIZE }), "SFML Pacman");
     while (window.isOpen())
     {
-        while (const std::optional event = window.pollEvent())
+        while (std::optional event = window.pollEvent())
         {
-            if (event->is<sf::Event::Closed>())
-                window.close();
-
+            if (event->is<sf::Event::Closed>())window.close();
+            HandleInput(event);
         }
+        float dt = game_clock.restart().asSeconds();
+
+        m.Update(dt, window);
         window.clear();
-        m.Render(window);
+        //m.Render(window);
+        m.RenderDebug(window);
         window.display();
     }
 
