@@ -14,7 +14,7 @@ bool fileExists(const std::string& filename) {
     return file.is_open();
 }
 
-const int tileSize = 32;
+int tileSize = 32;
 
 
 bool parseNumber(std::string s, int& mod)
@@ -234,16 +234,31 @@ public:
     // Output to csv
     void SaveToFile(std::string path);
 
+    void Render(sf::RenderWindow& window)
+    {
+        for (int i = 0; i < mapHeight; i++)
+        {
+            for (int j = 0; j < mapWidth; j++)
+            {
+                Tile* _tile = this->get(i, j);
+                sf::RectangleShape r = sf::RectangleShape(sf::Vector2f{ (float) tileSize, (float) tileSize });
+                if (_tile->tileId == TILEID::WALL) r.setFillColor(sf::Color::White);
+                else r.setFillColor(sf::Color::Black);
+                r.setPosition(sf::Vector2f(j*tileSize, i*tileSize));
+                window.draw(r);
+            }
+        }
+    }
+
+
 
 };
 
 int main()
 {
-    int MAZEWIDTH = 10;
-    int MAZEHEIGHT = 10;
     Map m;
     m.LoadFromFile("example.csv");
-    sf::RenderWindow window(sf::VideoMode({ (unsigned)MAZEWIDTH * tileSize, (unsigned)MAZEHEIGHT * tileSize }), "SFML Test");
+    sf::RenderWindow window(sf::VideoMode({ (unsigned)m.getWidth() * tileSize, (unsigned)m.getHeight() * tileSize }), "SFML Test");
     sf::CircleShape shape(100.f);
     shape.setFillColor(sf::Color::Green);
 
@@ -256,7 +271,7 @@ int main()
 
         }
         window.clear();
-        window.draw(shape);
+        m.Render(window);
         window.display();
     }
 
