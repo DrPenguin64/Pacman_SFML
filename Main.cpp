@@ -14,7 +14,7 @@ bool fileExists(const std::string& filename) {
     return file.is_open();
 }
 
-int tileSize = 32;
+const int TILE_SIZE = 64;
 
 
 bool parseNumber(std::string s, int& mod)
@@ -102,7 +102,6 @@ class Map : public MapSuper
 public:
     int mapWidth;
     int mapHeight;
-    const int tileSize = 32;
     bool isInitialized = false;
     std::vector<Tile*> grid;
 
@@ -241,10 +240,10 @@ public:
             for (int j = 0; j < mapWidth; j++)
             {
                 Tile* _tile = this->get(i, j);
-                sf::RectangleShape r = sf::RectangleShape(sf::Vector2f{ (float) tileSize, (float) tileSize });
+                sf::RectangleShape r = sf::RectangleShape(sf::Vector2f{ (float) TILE_SIZE, (float)TILE_SIZE });
                 if (_tile->tileId == TILEID::WALL) r.setFillColor(sf::Color::White);
                 else r.setFillColor(sf::Color::Black);
-                r.setPosition(sf::Vector2f(j*tileSize, i*tileSize));
+                r.setPosition(sf::Vector2f(j* TILE_SIZE, i* TILE_SIZE));
                 window.draw(r);
             }
         }
@@ -258,10 +257,7 @@ int main()
 {
     Map m;
     m.LoadFromFile("example.csv");
-    sf::RenderWindow window(sf::VideoMode({ (unsigned)m.getWidth() * tileSize, (unsigned)m.getHeight() * tileSize }), "SFML Test");
-    sf::CircleShape shape(100.f);
-    shape.setFillColor(sf::Color::Green);
-
+    sf::RenderWindow window(sf::VideoMode({ (unsigned)m.getWidth() * TILE_SIZE, (unsigned)m.getHeight() * TILE_SIZE }), "SFML Test");
     while (window.isOpen())
     {
         while (const std::optional event = window.pollEvent())
