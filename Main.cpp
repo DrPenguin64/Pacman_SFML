@@ -22,6 +22,7 @@ const int TILETYPE_LEN = 6;
 enum class MODE {DEBUG, PLAY};
 MODE game_MODE = MODE::DEBUG;
 
+
 struct InputHandling {
 public:
     // Input events/ input related
@@ -292,7 +293,36 @@ public:
     }
     
     // Output to csv
-    void SaveToFile(std::string path);
+    void SaveToFile(std::string path)
+    {
+        std::cout << "Saving to file '" << path << "'...\n";
+
+        std::ofstream file(path); // creates file if it doesn't exist
+        if (!file) {
+            std::cerr << "Failed to open file for writing.\n";
+            return;
+        }
+
+        
+        // Write header
+        file << mapHeight << "," << mapWidth << "\n";
+        // Write contents
+        for (int i = 0; i < mapHeight; i++)
+        {
+            for (int j = 0; j < mapWidth; j++)
+            {
+                // Write tile type data
+                file << (int)get(i, j)->tile_ID;
+                // Add comma seperator (unless last in row)
+                if (j != mapWidth - 1) file << ",";
+            }
+            file << "\n";
+        }
+        // done
+
+        file.close();
+        std::cout << "Done.\n";
+    }
 
 
     // Gets {row, col} that is being moused over. returns {-1,-1} if not moused over anything
@@ -399,6 +429,8 @@ public:
 
 };
 
+Map _map;
+
 // Updates event flags in Global_input
 void HandleInput(std::optional<sf::Event>& event)
 {
@@ -421,6 +453,11 @@ void HandleInput(std::optional<sf::Event>& event)
             int target = ((int)GLOBAL_input.tileType) - 1;
             if (target < 0 ) target = TILETYPE_LEN - 1; // loop around
             GLOBAL_input.tileType = static_cast<TILETYPE>(target);
+        }
+
+        else if (keyEvent->code == sf::Keyboard::Key::S)
+        {
+            if (GLOBAL_input.controlIsHeld) _map.SaveToFile("outputtest.csv");
         }
 
         if (keyEvent->code == sf::Keyboard::Key::LControl) GLOBAL_input.controlIsHeld = true;
@@ -455,11 +492,11 @@ void HandleInput(std::optional<sf::Event>& event)
 sf::Clock game_clock;
 int main()
 {
-    Map m;
-    m.screenPos = sf::Vector2f(64, 64);
-    m.CreateBlank(20, 20);
-    //m.LoadFromFile("example.csv");
-    sf::RenderWindow window(sf::VideoMode({ (unsigned)(m.getWidth()+4) * TILE_SIZE, (unsigned)(m.getHeight()+4) * TILE_SIZE }), "SFML Pacman");
+
+    _map.screenPos = sf::Vector2f(64, 64);
+    //_map.CreateBlank(20, 20);
+    _map.LoadFromFile("example.csv");
+    sf::RenderWindow window(sf::VideoMode({ (unsigned)(_map.getWidth()+4) * TILE_SIZE, (unsigned)(_map.getHeight()+4) * TILE_SIZE }), "SFML Pacman");
     while (window.isOpen())
     {
         while (std::optional event = window.pollEvent())
@@ -469,10 +506,10 @@ int main()
         }
         float dt = game_clock.restart().asSeconds();
 
-        m.Update(dt, window);
+        _map.Update(dt, window);
         window.clear(sf::Color::Cyan);
         //m.Render(window);
-        m.RenderDebug(window);
+        _map.RenderDebug(window);
         window.display();
     }
 
