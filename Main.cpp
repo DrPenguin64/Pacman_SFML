@@ -57,7 +57,7 @@ std::string SaveFileDialog(const char* filter)
 
 float CAMERA_X = 0;
 float CAMERA_Y = 0;
-int cameraMoveSpd = 32*10;
+float cameraMoveSpd = 32*10;
 
 // Tile related
 const int TILE_SIZE = 32;
@@ -722,7 +722,7 @@ void HandleInput(std::optional<sf::Event>& event, float dt)
         }
 
         // WASD
-        else if (keyEvent->code == sf::Keyboard::Key::W)
+        if (keyEvent->code == sf::Keyboard::Key::W)
         {
             GLOBAL_input.cameraMovAxis.y = -1;
         }
@@ -752,19 +752,19 @@ void HandleInput(std::optional<sf::Event>& event, float dt)
         // WASD
         else if (keyEvent->code == sf::Keyboard::Key::W)
         {
-            GLOBAL_input.cameraMovAxis.y = 0;
+            if (GLOBAL_input.cameraMovAxis.y == -1) GLOBAL_input.cameraMovAxis.y = 0;
         }
         else if (keyEvent->code == sf::Keyboard::Key::S)
         {
-            GLOBAL_input.cameraMovAxis.y = 0;
+            if (GLOBAL_input.cameraMovAxis.y == 1) GLOBAL_input.cameraMovAxis.y = 0;
         }
         else if (keyEvent->code == sf::Keyboard::Key::A)
         {
-            GLOBAL_input.cameraMovAxis.x = 0;
+            if (GLOBAL_input.cameraMovAxis.x == -1) GLOBAL_input.cameraMovAxis.x = 0;
         }
         else if (keyEvent->code == sf::Keyboard::Key::D)
         {
-            GLOBAL_input.cameraMovAxis.x = 0;
+            if (GLOBAL_input.cameraMovAxis.x == 1) GLOBAL_input.cameraMovAxis.x = 0;
         }
     }
     else if (event->is<sf::Event::MouseButtonPressed>())
@@ -816,8 +816,8 @@ void Update(float dt)
 void Draw()
 {
     _map.RenderDebug(*window);
-    textDraw.DrawText("Selected: " + tileTypeString[(int)GLOBAL_input.tileType], 0, 0, 22, sf::Color::Black);
-    textDraw.DrawText(std::string("current map:") + std::to_string(_map.getWidth()) + "x" + std::to_string(_map.getHeight()), 0, 22, 22, sf::Color::Black);
+    textDraw.DrawText("Selected: " + tileTypeString[(int)GLOBAL_input.tileType], 0, 0, 22, sf::Color::Red);
+    textDraw.DrawText(std::string("current map:") + std::to_string(_map.getWidth()) + "x" + std::to_string(_map.getHeight()), 0, 22, 22, sf::Color::Red);
     // Render ui
     menu.Draw();
 }
