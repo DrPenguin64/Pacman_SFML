@@ -10,6 +10,9 @@
 #include <sstream>
 
 
+int CAMERA_X;
+int CAMERA_Y;
+
 // Tile related
 const int TILE_SIZE = 32;
 const int TILETYPE_startIndex = 0;
@@ -35,10 +38,41 @@ public:
     bool rightClickJustPressed = false;
     // The tile id that was input via keyboard by typing (0, 1, 2, etc)
     bool controlIsHeld = false;
+    bool shiftIsHeld = false;
     TILETYPE tileType;
 };
 
 InputHandling GLOBAL_input;
+
+struct TextDraw
+{
+public:
+    sf::Font font;
+    sf::RenderWindow* window;
+    //std::vector<sf::Text*> textList; // All texts to draw
+
+    void Init(sf::RenderWindow& _w)
+    {
+        if (!font.openFromFile("fonts/arial.ttf"))
+        {
+            throw std::runtime_error("Error: font not found");
+            // handle error
+        }
+        window = &_w;
+
+    }
+
+    void DrawText(std::string s, int x, int y, int fontSize = 24, sf::Color _color=sf::Color::White)
+    {
+        sf::Text text = sf::Text(font, s);
+        //text.setFont(font);
+        text.setCharacterSize(fontSize);     // in pixels
+        text.setFillColor(_color);
+        text.setPosition(sf::Vector2f{ (float)x, (float)y });
+
+        window->draw(text);
+    }
+};
 
 
 bool fileExists(const std::string& filename) {
@@ -145,6 +179,7 @@ public:
 
     // Top left corner on screen to start drawing from
     sf::Vector2f screenPos; 
+    Tile* lastPlaced;
 
     // Spawn positions
     sf::Vector2f playerSpawnPos;
@@ -287,9 +322,20 @@ public:
             if (_row > maxRowReached) maxRowReached = _row;
             _row++; // row ctr
         }
-        if (maxRowReached < mapHeight-1) throw std::runtime_error("Error: actual rows < #rows declared in .csv file");
-        if (maxColReached < mapWidth-1) throw std::runtime_error("Error: actual cols < #cols declared in .csv file");
-        std::cout << "Map loaded.";
+        // Special case: allow map with header only
+        if (maxRowReached == -1)
+        {
+            std::cout << "Header only map detected, filling with EMPTY\n";
+            CreateBlank(mapHeight, mapWidth);
+        }
+        else
+        {
+            if (maxRowReached < mapHeight - 1) throw std::runtime_error("Error: actual rows < #rows declared in .csv file");
+            if (maxColReached < mapWidth - 1) throw std::runtime_error("Error: actual cols < #cols declared in .csv file");
+        }
+
+
+        std::cout << "Map loaded.\n";
     }
     
     // Output to csv
@@ -348,6 +394,43 @@ public:
         return mousedOver[0] == row && mousedOver[1] == col;
     }
 
+    // Returns a list of the coordinates connecting (x1,y1) to (x2, y2)
+    std::vector<std::array<int, 2>> getLineFrom(int x1, int y1, int x2, int y2)
+    {
+        // Ensure y2/x2 is the bigger one
+        if (y2 < y1)
+        {
+            int tmp = y2;
+            y2 = y1;
+            y1 = tmp;
+        }
+        if (x2 < x1)
+        {
+            int tmp = x2;
+            x2 = x1;
+            x1 = tmp;
+        }
+
+        std::vector<std::array<int, 2>> _result;
+        // Horizontal
+        if (x1 == x2)
+        {
+            for (int i = y1; i <= y2; i++)
+            {
+                _result.push_back(std::array<int, 2>{x1, i});
+            }
+        }
+        // Vertical
+        else if (y1 == y2)
+        {
+            for (int i = x1; i <= x2; i++)
+            {
+                _result.push_back(std::array<int, 2>{i, y1});
+            }
+        }
+        return _result;
+    }
+
     void Update(float dt, sf::RenderWindow& window)
     {
         if (game_MODE == MODE::DEBUG)
@@ -359,8 +442,20 @@ public:
             if (GLOBAL_input.leftClickPressed) {
                 // Left control + click to erase
                 if (GLOBAL_input.controlIsHeld) this->get(mouseOver[0], mouseOver[1])->tile_ID = TILETYPE::BLANK;
+                // Click->shifthold->click
+                else if (GLOBAL_input.shiftIsHeld)
+                {
+                    // Draw line
+                    //x,y
+                    std::vector<std::array<int, 2>> pixels = getLineFrom(lastPlaced->col, lastPlaced->row, mouseOver[1], mouseOver[0]);
+                    for (std::array<int, 2> pt : pixels)
+                    {
+                        this->get(pt[1], pt[0])->tile_ID = GLOBAL_input.tileType;
+                    }
+                }
                 // Set to the new tile type
                 else this->get(mouseOver[0], mouseOver[1])->tile_ID = GLOBAL_input.tileType;
+                lastPlaced = this->get(mouseOver[0], mouseOver[1]);
             }
             else if (GLOBAL_input.rightClickJustPressed)
             {
@@ -441,7 +536,7 @@ void HandleInput(std::optional<sf::Event>& event)
     {
         auto keyEvent = event->getIf<sf::Event::KeyPressed>();
         //if (keyEvent->code == sf::Keyboard::Key::Num0) { GLOBAL_input.tileType = TILETYPE::BLANK; std::cout << "Selected: " << tileTypeString[0] << "\n"; }
-        if (keyEvent->code == sf::Keyboard::Key::Num1) { GLOBAL_input.tileType = TILETYPE::WALL;}
+        if (keyEvent->code == sf::Keyboard::Key::Num1) { GLOBAL_input.tileType = TILETYPE::WALL; }
         if (keyEvent->code == sf::Keyboard::Key::P) { GLOBAL_input.tileType = TILETYPE::PLAYERSPAWN; std::cout << "Selected: " << tileTypeString[(int)TILETYPE::PLAYERSPAWN] << "\n"; }
         
         if (keyEvent->code == sf::Keyboard::Key::Up) {
@@ -451,7 +546,7 @@ void HandleInput(std::optional<sf::Event>& event)
         }
         else if (keyEvent->code == sf::Keyboard::Key::Down) {
             int target = ((int)GLOBAL_input.tileType) - 1;
-            if (target < 0 ) target = TILETYPE_LEN - 1; // loop around
+            if (target < 0) target = TILETYPE_LEN - 1; // loop around
             GLOBAL_input.tileType = static_cast<TILETYPE>(target);
         }
 
@@ -459,9 +554,9 @@ void HandleInput(std::optional<sf::Event>& event)
         {
             if (GLOBAL_input.controlIsHeld) _map.SaveToFile("outputtest.csv");
         }
-
+        else if (keyEvent->code == sf::Keyboard::Key::LShift) GLOBAL_input.shiftIsHeld = true;
         if (keyEvent->code == sf::Keyboard::Key::LControl) GLOBAL_input.controlIsHeld = true;
-        else std::cout << "Selected: " << tileTypeString[(int)GLOBAL_input.tileType] << "\n";
+        
         //if (keyEvent->code == sf::Keyboard::Key::)
         //std::cout << "Key code: " << keyEvent->code << "\n";
     }
@@ -469,6 +564,7 @@ void HandleInput(std::optional<sf::Event>& event)
     {
         auto keyEvent = event->getIf<sf::Event::KeyReleased>();
         if (keyEvent->code == sf::Keyboard::Key::LControl) GLOBAL_input.controlIsHeld = false;
+        else if (keyEvent->code == sf::Keyboard::Key::LShift) GLOBAL_input.shiftIsHeld = false;
     }
     else if (event->is<sf::Event::MouseButtonPressed>())
     {
@@ -490,13 +586,15 @@ void HandleInput(std::optional<sf::Event>& event)
 }
 
 sf::Clock game_clock;
+TextDraw textDraw;
 int main()
 {
 
     _map.screenPos = sf::Vector2f(64, 64);
     //_map.CreateBlank(20, 20);
     _map.LoadFromFile("example.csv");
-    sf::RenderWindow window(sf::VideoMode({ (unsigned)(_map.getWidth()+4) * TILE_SIZE, (unsigned)(_map.getHeight()+4) * TILE_SIZE }), "SFML Pacman");
+    sf::RenderWindow window(sf::VideoMode({ (unsigned)(_map.getWidth()+4) * TILE_SIZE, (unsigned)(_map.getHeight()+4) * TILE_SIZE }), "Pacman Maze Editor");
+    textDraw.Init(window);
     while (window.isOpen())
     {
         while (std::optional event = window.pollEvent())
@@ -508,8 +606,10 @@ int main()
 
         _map.Update(dt, window);
         window.clear(sf::Color::Cyan);
+        //RenderTopMenu();
         //m.Render(window);
         _map.RenderDebug(window);
+        textDraw.DrawText("Selected: " + tileTypeString[(int)GLOBAL_input.tileType], 0, 0, 22, sf::Color::Black);
         window.display();
     }
 
