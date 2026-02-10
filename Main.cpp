@@ -8,7 +8,52 @@
 #include <string>
 #include <chrono>
 #include <sstream>
+#include <windows.h>
+#include <commdlg.h>
 
+
+std::string OpenFileDialog(const char* filter)
+{
+    char filename[MAX_PATH] = "";
+
+    OPENFILENAMEA ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.lpstrFile = filename;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrFilter = filter;
+    ofn.nFilterIndex = 1;
+    ofn.Flags =
+        OFN_EXPLORER |
+        OFN_PATHMUSTEXIST |
+        OFN_FILEMUSTEXIST |
+        OFN_NOCHANGEDIR;
+
+    if (GetOpenFileNameA(&ofn))
+        return std::string(filename);
+
+    return {};
+}
+
+std::string SaveFileDialog(const char* filter)
+{
+    char filename[MAX_PATH] = "";
+
+    OPENFILENAMEA ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.lpstrFile = filename;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrFilter = filter;
+    ofn.nFilterIndex = 1;
+    ofn.Flags =
+        OFN_EXPLORER |
+        OFN_PATHMUSTEXIST |
+        OFN_NOCHANGEDIR;
+
+    if (GetOpenFileNameA(&ofn))
+        return std::string(filename);
+
+    return {};
+}
 
 int CAMERA_X;
 int CAMERA_Y;
@@ -516,6 +561,133 @@ public:
 
 };
 
+class Button
+{
+private:
+    sf::RenderWindow* window;
+    sf::Texture _texture;
+    sf::Sprite* _sprite;
+public:
+    int x, y;
+    int sizeX = 32;
+    int sizeY = 32;
+    Button(std::string texturePath, sf::RenderWindow* _win)
+    {
+        if (!_texture.loadFromFile(texturePath)) std::cout << "Error: could not load texture: " << texturePath << "\n";
+        sizeX = _texture.getSize().x;
+        sizeY = _texture.getSize().y;
+        _sprite = new sf::Sprite(_texture);
+        this->window = _win;
+    }
+
+    bool IsMouseOver()
+    {
+        sf::Vector2i pixelPos = sf::Mouse::getPosition(*window);        // window coordinates
+        sf::Vector2f mouseCoords = window->mapPixelToCoords(pixelPos);
+
+        int minX = x;
+        int maxX = x + sizeX;
+        int minY = y;
+        int maxY = y + sizeY;
+
+        return mouseCoords.x >= minX && mouseCoords.x <= maxX && mouseCoords.y >= minY && mouseCoords.y <= maxY;
+    }
+
+    void setPosition(int _x, int _y)
+    {
+        this->x = _x;
+        this->y = _y;
+        _sprite->setPosition(sf::Vector2f{ (float)x, (float)y });
+    }
+
+    void Draw()
+    {
+        window->draw(*_sprite);
+    }
+
+    bool CheckIsJustClicked()
+    { 
+        return IsMouseOver() && GLOBAL_input.leftClickJustPressed;
+    }
+
+};
+
+class Menu
+{
+private:
+    Button* config;
+    Button* open;
+    Button* save;
+
+    std::vector<Button*> buttons;
+
+    // Arrange from right
+    int offset = 5;
+
+    sf::RenderWindow* window;
+    int screenWidth, screenHeight;
+public:
+    void Init(sf::RenderWindow* _window, int _screenWidth, int _screenHeight)
+    {
+        this->window = _window;
+        this->screenWidth = _screenWidth;
+        this->screenHeight = _screenHeight;
+    }
+
+    void LoadTextures()
+    {
+        std::cout << "Loading menu textures...\n";
+        config = new Button("menu\\config.png", window);
+        open = new Button("menu\\open.png", window);
+        save = new Button("menu\\save.png", window);
+
+        buttons.push_back(open);
+        buttons.push_back(config);
+        buttons.push_back(save);
+
+        std::cout << "Menu textures loaded.\n";
+    }
+
+    void Draw()
+    {
+        for (int i = 0; i < buttons.size(); i++)
+        {
+            buttons[i]->setPosition(screenWidth-(32*(3-i)), 0);
+            buttons[i]->Draw();
+        }
+    }
+
+    void Update(float dt, Map& _map)
+    {
+        if (save->CheckIsJustClicked())
+        {
+            std::string path = SaveFileDialog(
+                "CSV Files (*.csv)\0*.csv\0"
+            );
+
+            if (!path.empty())
+            {
+                std::cout << "Selected: " << path << "\n";
+            }
+            _map.SaveToFile(path);
+        }
+        else if (open->CheckIsJustClicked())
+        {
+            std::string path = OpenFileDialog(
+                "CSV Files (*.csv)\0*.csv\0"
+                "All Files (*.*)\0*.*\0"
+            );
+
+            if (!path.empty())
+            {
+                std::cout << "Selected: " << path << "\n";
+            }
+            _map.LoadFromFile(path);
+        }
+    }
+
+};
+
 Map _map;
 
 // Updates event flags in Global_input
@@ -577,33 +749,60 @@ void HandleInput(std::optional<sf::Event>& event)
     //asfdsf
 }
 
+
 sf::Clock game_clock;
 TextDraw textDraw;
+Menu menu;
+sf::RenderWindow* window;
+
+void LoadTextures()
+{
+    menu.LoadTextures();
+    _map.LoadTileTextures();
+}
+
+void Update(float dt)
+{
+    _map.Update(dt, *window);
+    menu.Update(dt, _map);
+    window->clear(sf::Color::Cyan);
+}
+
+void Draw()
+{
+    _map.RenderDebug(*window);
+    textDraw.DrawText("Selected: " + tileTypeString[(int)GLOBAL_input.tileType], 0, 0, 22, sf::Color::Black);
+    textDraw.DrawText(std::string("current map:") + std::to_string(_map.getWidth()) + "x" + std::to_string(_map.getHeight()), 0, 22, 22, sf::Color::Black);
+    // Render ui
+    menu.Draw();
+}
+
 int main()
 {
-
+    
     _map.screenPos = sf::Vector2f(64, 64);
-    _map.LoadTileTextures();
     //_map.CreateBlank(20, 20);
     _map.LoadFromFile("example.csv");
-    sf::RenderWindow window(sf::VideoMode({ (unsigned)(_map.getWidth()+4) * TILE_SIZE, (unsigned)(_map.getHeight()+4) * TILE_SIZE }), "Pacman Maze Editor");
-    textDraw.Init(window);
-    while (window.isOpen())
+    int screenWidth = (_map.getWidth() + 4) * TILE_SIZE;
+    int screenHeight = (_map.getHeight() + 4) * TILE_SIZE;
+    window = new sf::RenderWindow(sf::VideoMode({ (unsigned)screenWidth, (unsigned)screenHeight }), "Pacman Maze Editor");
+    menu.Init(window, screenWidth, screenHeight);
+    LoadTextures();
+    textDraw.Init(*window);
+    while (window->isOpen())
     {
-        while (std::optional event = window.pollEvent())
+        while (std::optional event = window->pollEvent())
         {
-            if (event->is<sf::Event::Closed>())window.close();
+            if (event->is<sf::Event::Closed>())window->close();
             HandleInput(event);
         }
         float dt = game_clock.restart().asSeconds();
+        Update(dt);
+        
+        // Draw
+        Draw();
 
-        _map.Update(dt, window);
-        window.clear(sf::Color::Cyan);
-        //RenderTopMenu();
-        //m.Render(window);
-        _map.RenderDebug(window);
-        textDraw.DrawText("Selected: " + tileTypeString[(int)GLOBAL_input.tileType], 0, 0, 22, sf::Color::Black);
-        window.display();
+        window->display();
     }
 
 
