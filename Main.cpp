@@ -16,10 +16,10 @@ int CAMERA_Y;
 // Tile related
 const int TILE_SIZE = 32;
 const int TILETYPE_startIndex = 0;
-const int TILETYPE_endIndex = 6;
-enum class TILETYPE { BLANK = 0, WALL = 1, PLAYERSPAWN = 2, RED = 3, BLU = 4, ORANGE = 5, PINK = 6 };
-std::array<std::string, 7> tileTypeString = { "Empty", "Wall", "PlayerSpawn", "RedSpawn", "BlueSpawn", "OrangeSpawn", "PinkSpawn" };
-const int TILETYPE_LEN = 6;
+const int TILETYPE_endIndex = 3;
+enum class TILETYPE { BLANK = 0, WALL = 1, PLAYERSPAWN = 2, COIN=3 };
+std::array<std::string, 4> tileTypeString = { "empty", "wall", "player_spawn", "coin" };
+const int TILETYPE_LEN = 4;
 
 // Debug/play toggle
 enum class MODE {DEBUG, PLAY};
@@ -130,10 +130,6 @@ class Tile
             //std::cout << "tiletype is " << (int)type << "\n";
             if (type == TILETYPE::WALL) return sf::Color::White;
             else if (type == TILETYPE::PLAYERSPAWN) return sf::Color::Green;
-            else if (type == TILETYPE::RED) return sf::Color::Red;
-            else if (type == TILETYPE::PINK) return sf::Color::Magenta;
-            else if (type == TILETYPE::ORANGE) return sf::Color::Yellow;
-            else if (type == TILETYPE::BLU) return sf::Color::Blue;
             else return sf::Color::Black;
         }
 
@@ -177,6 +173,10 @@ public:
     bool isInitialized = false;
     std::vector<Tile*> grid;
 
+    
+    // Tilesheet sprites
+    std::array<sf::Texture, tileTypeString.size()> tiletype_Textures;
+
     // Top left corner on screen to start drawing from
     sf::Vector2f screenPos; 
     Tile* lastPlaced;
@@ -189,12 +189,24 @@ public:
     sf::Vector2f blueSpawnPos;
 
     // need to initilaize 
+
     std::array<sf::Vector2f*, 7> specialVars = { nullptr, nullptr, &playerSpawnPos, &redSpawnPos, &blueSpawnPos, &orangeSpawnPos, &pinkSpawnPos};
 
+    void LoadTileTextures()
+    {
+        std::cout << "Loading tile textures...\n";
+        for (int i = 0; i < tileTypeString.size(); i++)
+        {
+            // Lookfor: tiletypeString[i].png
+            if (!tiletype_Textures[i].loadFromFile("tiles/" + tileTypeString[i] + ".png"))
+                throw std::runtime_error("Tile sprite" + tileTypeString[i] + ".png" + " not found");
+        }
+    }
 
     // Gets tile ref at row,col
     Tile* get(int r, int c)
     {
+
         assert(r >= 0 && r < mapHeight && c >= 0 && c < mapWidth);
         return grid[r * mapWidth + c];
     }
@@ -467,54 +479,34 @@ public:
     void RenderDebug(sf::RenderWindow& window)
     {
         bool drawFront = true;
-        sf::RectangleShape specialRender;
+        sf::Sprite specialRender = sf::Sprite(this->tiletype_Textures[(int)GLOBAL_input.tileType]);
         std::array<int, 2> mouseOver = getTileMousedOver(window);
         for (int i = 0; i < mapHeight; i++)
         {
             for (int j = 0; j < mapWidth; j++)
             {
                 Tile* _tile = this->get(i, j);
-                sf::RectangleShape r = sf::RectangleShape(sf::Vector2f{ (float)TILE_SIZE, (float)TILE_SIZE });
-                if (_tile->tile_ID == TILETYPE::WALL) r.setFillColor(sf::Color::White);
-                else if (_tile->tile_ID == TILETYPE::PLAYERSPAWN) r.setFillColor(sf::Color::Green);
-                else if (_tile->tile_ID == TILETYPE::RED) r.setFillColor(sf::Color::Red);
-                else if (_tile->tile_ID == TILETYPE::PINK) r.setFillColor(sf::Color::Magenta);
-                else if (_tile->tile_ID == TILETYPE::ORANGE) r.setFillColor(sf::Color::Yellow);
-                else if (_tile->tile_ID == TILETYPE::BLU) r.setFillColor(sf::Color::Blue);
-                else r.setFillColor(sf::Color::Black);
-                r.setPosition(screenPos + sf::Vector2f(j * TILE_SIZE, i * TILE_SIZE));
-
-                // If mouse over, change outline color
-                /*
-                std::array<int, 2> mouseOver = getTileMousedOver(window);
-                if (mouseOver[0] == i && mouseOver[1] == j) {
-;                   r.setOutlineColor(sf::Color::Red);
-                    r.setOutlineThickness(3);
-                    drawFront = true;
-                    specialRender = sf::RectangleShape(r);
-                }
-                else
-                {
-                    //r.setOutlineColor(r.getFillColor());
-                    //r.setOutlineThickness(3);
-                }
-                */
-                window.draw(r);
+                sf::Sprite _sprite(this->tiletype_Textures[(int)_tile->tile_ID]);
+                _sprite.setPosition(screenPos + sf::Vector2f(j * TILE_SIZE, i * TILE_SIZE));
+                window.draw(_sprite);
             } // end col loop
         } // end row loop
         
         // Draw the selected one  
         if (mouseOver[0] >= 0 && mouseOver[0] <= this->mapHeight - 1 && mouseOver[1] >= 0 && mouseOver[1] <= this->mapWidth - 1)
         {
-            specialRender = sf::RectangleShape(sf::Vector2f{ (float)TILE_SIZE, (float)TILE_SIZE });
+            //specialRender = sf::Sprite(this->tiletype_Textures[(int)GLOBAL_input.tileType]);
             specialRender.setPosition(screenPos + sf::Vector2f(mouseOver[1] * TILE_SIZE, mouseOver[0] * TILE_SIZE));
-            sf::Color fill_c = Tile::tileType2DebugColor(GLOBAL_input.tileType);
-            //std::cout << "fill color is " << fill_c.r << "," << fill_c.g  << "," << fill_c.b << "\n";
-            specialRender.setFillColor(fill_c);
-            specialRender.setOutlineColor(sf::Color::Red);
-            specialRender.setOutlineThickness(3);
-
+            
             window.draw(specialRender);
+
+            sf::RectangleShape specialRect = sf::RectangleShape(sf::Vector2f{ (float)TILE_SIZE, (float)TILE_SIZE });
+            specialRect.setPosition(screenPos + sf::Vector2f(mouseOver[1] * TILE_SIZE, mouseOver[0] * TILE_SIZE));
+            sf::Color fill_c = sf::Color::Transparent;
+            specialRect.setFillColor(fill_c);
+            specialRect.setOutlineColor(sf::Color::Red);
+            specialRect.setOutlineThickness(3);
+            window.draw(specialRect);
         }
 
         
@@ -591,6 +583,7 @@ int main()
 {
 
     _map.screenPos = sf::Vector2f(64, 64);
+    _map.LoadTileTextures();
     //_map.CreateBlank(20, 20);
     _map.LoadFromFile("example.csv");
     sf::RenderWindow window(sf::VideoMode({ (unsigned)(_map.getWidth()+4) * TILE_SIZE, (unsigned)(_map.getHeight()+4) * TILE_SIZE }), "Pacman Maze Editor");
