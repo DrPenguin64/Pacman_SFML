@@ -55,8 +55,9 @@ std::string SaveFileDialog(const char* filter)
     return {};
 }
 
-int CAMERA_X;
-int CAMERA_Y;
+float CAMERA_X = 0;
+float CAMERA_Y = 0;
+int cameraMoveSpd = 32*10;
 
 // Tile related
 const int TILE_SIZE = 32;
@@ -84,6 +85,9 @@ public:
     // The tile id that was input via keyboard by typing (0, 1, 2, etc)
     bool controlIsHeld = false;
     bool shiftIsHeld = false;
+
+    sf::Vector2f cameraMovAxis;
+
     TILETYPE tileType;
 };
 
@@ -350,7 +354,7 @@ public:
                 // convert to int
                 int asInt;
                 if (!parseNumber(f, asInt)) throw std::runtime_error("File error: could not parse csv field to int");
-                std::cout << asInt << "\t";
+                //std::cout << asInt << "\t";
                 if (_row != -1)
                 {
 
@@ -375,7 +379,7 @@ public:
                 CreateEmpty(mapHeight, mapWidth);
                 std::cout << "\nsize: (" << mapHeight << "x" << mapWidth << ")\n";
             }
-            std::cout << "\n";
+            //std::cout << "\n";
             if (_row > maxRowReached) maxRowReached = _row;
             _row++; // row ctr
         }
@@ -431,8 +435,9 @@ public:
     // Gets {row, col} that is being moused over. returns {-1,-1} if not moused over anything
     std::array<int, 2> getTileMousedOver(sf::RenderWindow &window)
     {
+        sf::Vector2f cameraPos = sf::Vector2f(CAMERA_X, CAMERA_Y);
         sf::Vector2i pixelPos = sf::Mouse::getPosition(window);        // window coordinates
-        sf::Vector2f mouseCoords = window.mapPixelToCoords(pixelPos) - screenPos;
+        sf::Vector2f mouseCoords = window.mapPixelToCoords(pixelPos) - screenPos + cameraPos;
         //sf::Vector2f mouseCoords;
 
         // Get nearest
@@ -526,13 +531,14 @@ public:
         bool drawFront = true;
         sf::Sprite specialRender = sf::Sprite(this->tiletype_Textures[(int)GLOBAL_input.tileType]);
         std::array<int, 2> mouseOver = getTileMousedOver(window);
+        sf::Vector2f cameraPos = sf::Vector2f(CAMERA_X, CAMERA_Y);
         for (int i = 0; i < mapHeight; i++)
         {
             for (int j = 0; j < mapWidth; j++)
             {
                 Tile* _tile = this->get(i, j);
                 sf::Sprite _sprite(this->tiletype_Textures[(int)_tile->tile_ID]);
-                _sprite.setPosition(screenPos + sf::Vector2f(j * TILE_SIZE, i * TILE_SIZE));
+                _sprite.setPosition(screenPos - cameraPos + sf::Vector2f(j * TILE_SIZE, i * TILE_SIZE));
                 window.draw(_sprite);
             } // end col loop
         } // end row loop
@@ -541,12 +547,13 @@ public:
         if (mouseOver[0] >= 0 && mouseOver[0] <= this->mapHeight - 1 && mouseOver[1] >= 0 && mouseOver[1] <= this->mapWidth - 1)
         {
             //specialRender = sf::Sprite(this->tiletype_Textures[(int)GLOBAL_input.tileType]);
-            specialRender.setPosition(screenPos + sf::Vector2f(mouseOver[1] * TILE_SIZE, mouseOver[0] * TILE_SIZE));
+            //_spspecialRenderrite.setPosition(screenPos + sf::Vector2f(j * TILE_SIZE, i * TILE_SIZE));
+            specialRender.setPosition(screenPos -cameraPos + sf::Vector2f(mouseOver[1] * TILE_SIZE, mouseOver[0] * TILE_SIZE));
             
             window.draw(specialRender);
 
             sf::RectangleShape specialRect = sf::RectangleShape(sf::Vector2f{ (float)TILE_SIZE, (float)TILE_SIZE });
-            specialRect.setPosition(screenPos + sf::Vector2f(mouseOver[1] * TILE_SIZE, mouseOver[0] * TILE_SIZE));
+            specialRect.setPosition(screenPos - cameraPos + sf::Vector2f(mouseOver[1] * TILE_SIZE, mouseOver[0] * TILE_SIZE));
             sf::Color fill_c = sf::Color::Transparent;
             specialRect.setFillColor(fill_c);
             specialRect.setOutlineColor(sf::Color::Red);
@@ -691,7 +698,7 @@ public:
 Map _map;
 
 // Updates event flags in Global_input
-void HandleInput(std::optional<sf::Event>& event)
+void HandleInput(std::optional<sf::Event>& event, float dt)
 {
     GLOBAL_input.leftClickJustPressed = false;
     GLOBAL_input.rightClickJustPressed = false;
@@ -714,9 +721,22 @@ void HandleInput(std::optional<sf::Event>& event)
             GLOBAL_input.tileType = static_cast<TILETYPE>(target);
         }
 
+        // WASD
+        else if (keyEvent->code == sf::Keyboard::Key::W)
+        {
+            GLOBAL_input.cameraMovAxis.y = -1;
+        }
         else if (keyEvent->code == sf::Keyboard::Key::S)
         {
-            if (GLOBAL_input.controlIsHeld) _map.SaveToFile("outputtest.csv");
+            GLOBAL_input.cameraMovAxis.y = 1;
+        }
+        else if (keyEvent->code == sf::Keyboard::Key::A)
+        {
+            GLOBAL_input.cameraMovAxis.x = -1;
+        }
+        else if (keyEvent->code == sf::Keyboard::Key::D)
+        {
+            GLOBAL_input.cameraMovAxis.x = 1;
         }
         else if (keyEvent->code == sf::Keyboard::Key::LShift) GLOBAL_input.shiftIsHeld = true;
         if (keyEvent->code == sf::Keyboard::Key::LControl) GLOBAL_input.controlIsHeld = true;
@@ -729,6 +749,23 @@ void HandleInput(std::optional<sf::Event>& event)
         auto keyEvent = event->getIf<sf::Event::KeyReleased>();
         if (keyEvent->code == sf::Keyboard::Key::LControl) GLOBAL_input.controlIsHeld = false;
         else if (keyEvent->code == sf::Keyboard::Key::LShift) GLOBAL_input.shiftIsHeld = false;
+        // WASD
+        else if (keyEvent->code == sf::Keyboard::Key::W)
+        {
+            GLOBAL_input.cameraMovAxis.y = 0;
+        }
+        else if (keyEvent->code == sf::Keyboard::Key::S)
+        {
+            GLOBAL_input.cameraMovAxis.y = 0;
+        }
+        else if (keyEvent->code == sf::Keyboard::Key::A)
+        {
+            GLOBAL_input.cameraMovAxis.x = 0;
+        }
+        else if (keyEvent->code == sf::Keyboard::Key::D)
+        {
+            GLOBAL_input.cameraMovAxis.x = 0;
+        }
     }
     else if (event->is<sf::Event::MouseButtonPressed>())
     {
@@ -761,8 +798,16 @@ void LoadTextures()
     _map.LoadTileTextures();
 }
 
+void UpdateCamera(float dt)
+{
+    
+    CAMERA_X += GLOBAL_input.cameraMovAxis.x * cameraMoveSpd * dt;
+    CAMERA_Y += GLOBAL_input.cameraMovAxis.y * cameraMoveSpd * dt;
+}
+
 void Update(float dt)
 {
+    UpdateCamera(dt);
     _map.Update(dt, *window);
     menu.Update(dt, _map);
     window->clear(sf::Color::Cyan);
@@ -783,20 +828,21 @@ int main()
     _map.screenPos = sf::Vector2f(64, 64);
     //_map.CreateBlank(20, 20);
     _map.LoadFromFile("example.csv");
-    int screenWidth = (_map.getWidth() + 4) * TILE_SIZE;
-    int screenHeight = (_map.getHeight() + 4) * TILE_SIZE;
+    int screenWidth = 800;
+    int screenHeight = 600;
     window = new sf::RenderWindow(sf::VideoMode({ (unsigned)screenWidth, (unsigned)screenHeight }), "Pacman Maze Editor");
     menu.Init(window, screenWidth, screenHeight);
     LoadTextures();
     textDraw.Init(*window);
     while (window->isOpen())
     {
+        float dt = game_clock.restart().asSeconds();
         while (std::optional event = window->pollEvent())
         {
             if (event->is<sf::Event::Closed>())window->close();
-            HandleInput(event);
+            HandleInput(event, dt);
         }
-        float dt = game_clock.restart().asSeconds();
+        
         Update(dt);
         
         // Draw
