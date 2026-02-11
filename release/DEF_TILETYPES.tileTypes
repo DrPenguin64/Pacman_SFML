@@ -1,0 +1,5 @@
+name,index
+blank,0
+wall,1
+player_spawn,2
+coin,3
